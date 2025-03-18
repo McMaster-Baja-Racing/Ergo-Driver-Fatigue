@@ -182,7 +182,7 @@ def preprocess_data(file_path,
 
 
 if __name__ == '__main__':
-    file_path = "data/DATA_034.csv"
+    file_path = "data/DATA_029.csv"
     
     processed_df = preprocess_data(
         file_path,
