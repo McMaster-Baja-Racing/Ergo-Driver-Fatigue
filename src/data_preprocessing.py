@@ -1,7 +1,9 @@
 import pandas as pd
 import numpy as np
-from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
+from scipy.signal import butter, filtfilt
+
+# --- Preprocessing Functions ---
 
 def butter_lowpass(cutoff, fs, order=4):
     """
@@ -103,7 +105,7 @@ def preprocess_data(file_path,
     # Estimate sampling frequency from the timestamp differences (assumes uniform sampling)
     time_diffs = df[timestamp_col].diff().dt.total_seconds().dropna()
     fs = 1.0 / time_diffs.median()
-    print(f"Estimated sampling frequency: {fs:.2f} Hz")
+    print(f"File: {file_path} | Estimated sampling frequency: {fs:.2f} Hz")
     
     # Estimate gravity on each axis by applying a lowpass filter to the raw signals
     df['gravity_x'] = lowpass_filter(df[x_col], cutoff, fs)
@@ -125,8 +127,8 @@ def preprocess_data(file_path,
         R = rotation_matrix_from_vectors(g_mean_unit, target)
         
         # Rotate the raw accelerometer data (each row is a 3D vector)
-        raw_data = df[[x_col, y_col, z_col]].values  # shape: (n_samples, 3)
-        rotated = np.dot(raw_data, R.T)  # Apply rotation; result shape: (n_samples, 3)
+        raw_data = df[[x_col, y_col, z_col]].values
+        rotated = np.dot(raw_data, R.T)
         df['rotated_x'] = rotated[:, 0]
         df['rotated_y'] = rotated[:, 1]
         df['rotated_z'] = rotated[:, 2]
@@ -138,17 +140,15 @@ def preprocess_data(file_path,
         df['rotated_gravity_y'] = rotated_gravity[:, 1]
         df['rotated_gravity_z'] = rotated_gravity[:, 2]
         
-        # In the rotated frame, the gravity vector is aligned with z.
-        # Remove gravity by subtracting the mean gravity magnitude from the z-axis.
+        # Remove gravity in the rotated frame (gravity should be along z)
         df['linear_x'] = df['rotated_x']
         df['linear_y'] = df['rotated_y']
         df['linear_z'] = df['rotated_z'] - g_norm
         
     else:
-        # For dynamic orientation: compute a rotation per sample (more computationally expensive)
+        # Dynamic orientation (computing a rotation per sample)
         rotated_list = []
         for i, row in df.iterrows():
-            # Build gravity vector from the lowpass filtered data for this sample
             g_vec = np.array([row['gravity_x'], row['gravity_y'], row['gravity_z']])
             g_norm = np.linalg.norm(g_vec)
             if g_norm == 0:
@@ -162,7 +162,6 @@ def preprocess_data(file_path,
         df['rotated_x'] = rotated_array[:, 0]
         df['rotated_y'] = rotated_array[:, 1]
         df['rotated_z'] = rotated_array[:, 2]
-        # For dynamic orientation, subtract the per-sample gravity magnitude (from the rotated lowpass gravity)
         gravity_magnitudes = np.linalg.norm(df[['gravity_x', 'gravity_y', 'gravity_z']].values, axis=1)
         df['linear_x'] = df['rotated_x']
         df['linear_y'] = df['rotated_y']
@@ -180,49 +179,69 @@ def preprocess_data(file_path,
     
     return df
 
+# --- Main Script for Plotting Both Input and Seat Data ---
 
 if __name__ == '__main__':
-    file_path = "data/DATA_029.csv"
+    # Define file paths for input and seat measurements
+    file_path_input = "data/pre_washers_with_ty_in_car/engine_rev_RUNNERS.CSV"
+    file_path_seat  = "data/pre_washers_with_ty_in_car/engine_rev_SEAT.CSV"
     
-    processed_df = preprocess_data(
-        file_path,
-        static_orientation=True,
-        horizontal_weight=1,
-        vertical_weight=1,
-    )
+    # Preprocess both datasets (adjust weighting factors if needed)
+    input_df = preprocess_data(file_path_input,
+                               static_orientation=True,
+                               horizontal_weight=1,
+                               vertical_weight=1)
+    seat_df  = preprocess_data(file_path_seat,
+                               static_orientation=True,
+                               horizontal_weight=1,
+                               vertical_weight=1)
     
-    # Display the first few rows of the processed DataFrame
-    print(processed_df.head())
-    
-    # Plot an example comparing the rotated z-axis before and after gravity removal
+    # --- Plot Comparison for Rotated Z (with gravity) ---
     plt.figure(figsize=(10, 6))
-    plt.plot(processed_df['Timestamp'], processed_df['rotated_z'], label="Rotated Z (with gravity)")
-    plt.plot(processed_df['Timestamp'], processed_df['linear_z'], label="Linear Z (gravity removed)")
-    plt.plot(processed_df['Timestamp'], processed_df['Z'], label="Original Z", alpha=0.5, linestyle='--')
+    plt.plot(input_df['Timestamp'], input_df['rotated_z'], label="Input Rotated Z (with gravity)")
+    plt.plot(seat_df['Timestamp'], seat_df['rotated_z'], label="Seat Rotated Z (with gravity)")
     plt.xlabel("Time")
     plt.ylabel("Acceleration (m/s²)")
-    plt.title("Rotated vs. Gravity-Removed Z Acceleration")
+    plt.title("Comparison of Rotated Z (with gravity)")
     plt.legend()
+    plt.grid(True)
     plt.show()
-
-    # Plot an example comparing the rotated x-axis before and after gravity removal
+    
+    # --- Plot Comparison for Linear Z (gravity removed) ---
     plt.figure(figsize=(10, 6))
-    plt.plot(processed_df['Timestamp'], processed_df['rotated_x'], label="Rotated X (with gravity)")
-    plt.plot(processed_df['Timestamp'], processed_df['linear_x'], label="Linear X (gravity removed)")
-    plt.plot(processed_df['Timestamp'], processed_df['X'], label="Original X", alpha=0.5, linestyle='--')
+    plt.plot(input_df['Timestamp'], input_df['linear_z'], label="Input Linear Z (gravity removed)")
+    plt.plot(seat_df['Timestamp'], seat_df['linear_z'], label="Seat Linear Z (gravity removed)")
     plt.xlabel("Time")
     plt.ylabel("Acceleration (m/s²)")
-    plt.title("Rotated vs. Gravity-Removed X Acceleration")
+    plt.title("Comparison of Linear Z (gravity removed)")
     plt.legend()
+    plt.grid(True)
     plt.show()
-
-    # Plot now all three components of the weighted acceleration 
+    
+    # --- Plot Comparison for Weighted Acceleration Components ---
     plt.figure(figsize=(10, 6))
-    plt.plot(processed_df['Timestamp'], processed_df['weighted_x'], label="Weighted X")
-    plt.plot(processed_df['Timestamp'], processed_df['weighted_y'], label="Weighted Y")
-    plt.plot(processed_df['Timestamp'], processed_df['weighted_z'], label="Weighted Z")
+    # For input data
+    plt.plot(input_df['Timestamp'], input_df['weighted_x'], label="Input Weighted X")
+    plt.plot(input_df['Timestamp'], input_df['weighted_y'], label="Input Weighted Y")
+    plt.plot(input_df['Timestamp'], input_df['weighted_z'], label="Input Weighted Z")
+    # For seat data (using a different linestyle or color to differentiate)
+    plt.plot(seat_df['Timestamp'], seat_df['weighted_x'], label="Seat Weighted X", linestyle='--')
+    plt.plot(seat_df['Timestamp'], seat_df['weighted_y'], label="Seat Weighted Y", linestyle='--')
+    plt.plot(seat_df['Timestamp'], seat_df['weighted_z'], label="Seat Weighted Z", linestyle='--')
     plt.xlabel("Time")
     plt.ylabel("Acceleration (m/s²)")
-    plt.title("Weighted Acceleration Components")
+    plt.title("Comparison of Weighted Acceleration Components")
     plt.legend()
+    plt.grid(True)
+    plt.show()
+    
+    # --- Optionally, plot overall weighted_total for both ---
+    plt.figure(figsize=(10, 6))
+    plt.plot(input_df['Timestamp'], input_df['weighted_total'], label="Input Weighted Total")
+    plt.plot(seat_df['Timestamp'], seat_df['weighted_total'], label="Seat Weighted Total", linestyle='--')
+    plt.xlabel("Time")
+    plt.ylabel("Acceleration (m/s²)")
+    plt.title("Comparison of Weighted Total Acceleration")
+    plt.legend()
+    plt.grid(True)
     plt.show()

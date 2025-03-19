@@ -25,7 +25,7 @@ def compute_fft(signal, fs):
     return freqs[pos_mask], np.abs(fft_vals[pos_mask])
 
 if __name__ == '__main__':
-    file_path = "data/DATA_029.csv"
+    file_path = "data/post_washers_with_ty_in_car/engine_rev_SEAT.CSV"
     
     processed_df = preprocess_data(
         file_path,

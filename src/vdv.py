@@ -66,7 +66,7 @@ def compute_vdv(df, accel_col='weighted_total', timestamp_col='Timestamp'):
 
 # Example usage:
 if __name__ == '__main__':
-    file_path = "data/DATA_034.csv"
+    file_path = "data/pre_washers_with_ty_in_car/engine_rev_SEAT_2.CSV"
     
     processed_df = preprocess_data(
         file_path,
