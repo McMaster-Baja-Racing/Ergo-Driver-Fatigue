@@ -1,0 +1,92 @@
+import numpy as np
+import pandas as pd
+from vibration_data import VibrationData
+
+def compute_rms(vib_data: VibrationData) -> float:
+    """
+    Compute the overall root-mean-square (RMS) acceleration from the vibration data.
+    
+    Parameters:
+        vib_data (VibrationData): An instance of VibrationData.
+    
+    Returns:
+        float: The RMS acceleration.
+    """
+    mag = vib_data.magnitude()  # magnitude = sqrt(x² + y² + z²)
+    return np.sqrt(np.mean(mag ** 2))
+
+def compute_vdv(vib_data: VibrationData) -> float:
+    """
+    Compute the Vibration Dose Value (VDV) defined as:
+        VDV = (∑ (a^4 * dt))^(1/4)
+    where 'a' is the acceleration magnitude and dt is the sample interval.
+    
+    Parameters:
+        vib_data (VibrationData): An instance of VibrationData.
+    
+    Returns:
+        float: The VDV value.
+    """
+    dt = 1.0 / vib_data.fs
+    mag = vib_data.magnitude()
+    integrated = np.sum(mag ** 4 * dt)
+    return integrated ** (1/4)
+
+def compute_fft(vib_data: VibrationData) -> tuple:
+    """
+    Compute the FFT for each axis of the vibration data.
+    
+    Parameters:
+        vib_data (VibrationData): An instance of VibrationData.
+    
+    Returns:
+        tuple: (freqs, fft_x, fft_y, fft_z)
+            - freqs (np.array): Positive frequency bins.
+            - fft_x (np.array): Magnitude spectrum of x-axis.
+            - fft_y (np.array): Magnitude spectrum of y-axis.
+            - fft_z (np.array): Magnitude spectrum of z-axis.
+    """
+    n = len(vib_data.x)
+    freqs = np.fft.fftfreq(n, d=1/vib_data.fs)
+    fft_x = np.fft.fft(vib_data.x)
+    fft_y = np.fft.fft(vib_data.y)
+    fft_z = np.fft.fft(vib_data.z)
+    fft_total = np.fft.fft(vib_data.magnitude())
+    pos_mask = freqs >= 0
+    return freqs[pos_mask], np.abs(fft_x[pos_mask]), np.abs(fft_y[pos_mask]), np.abs(fft_z[pos_mask]), np.abs(fft_total[pos_mask])
+
+def compute_crest_factor(vib_data: VibrationData) -> float:
+    """
+    Compute the crest factor for the vibration data.
+    Crest Factor is defined as the ratio of the peak absolute acceleration
+    to the RMS value.
+    
+    Parameters:
+        vib_data (VibrationData): An instance of VibrationData.
+    
+    Returns:
+        float: Crest factor.
+    """
+    mag = vib_data.magnitude()
+    rms_val = compute_rms(vib_data)
+    if rms_val == 0:
+        return np.nan
+    return np.max(np.abs(mag)) / rms_val
+
+def compute_sliding_window_rms(vib_data: VibrationData, window_size: int):
+    """
+    Compute the RMS over a sliding window for the vibration data magnitude.
+    
+    Parameters:
+        vib_data (VibrationData): An instance of VibrationData.
+        window_size (int): Number of samples in the sliding window.
+        
+    Returns:
+        np.ndarray: Array of RMS values for each window.
+    """
+    # Convert magnitude to a pandas Series for rolling window computation.
+    mag = vib_data.magnitude()
+    series = pd.Series(mag)
+    # Compute rolling RMS: first compute rolling mean of squares, then take sqrt.
+    rolling_mean = series.pow(2).rolling(window=window_size, center=True).mean()
+    return np.sqrt(rolling_mean).values
