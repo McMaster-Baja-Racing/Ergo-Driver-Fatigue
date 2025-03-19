@@ -51,9 +51,9 @@ def compute_fft(vib_data: VibrationData) -> tuple:
     fft_x = np.fft.fft(vib_data.x)
     fft_y = np.fft.fft(vib_data.y)
     fft_z = np.fft.fft(vib_data.z)
-    fft_total = np.fft.fft(vib_data.magnitude())
+    fft_combined = np.sqrt(np.abs(fft_x)**2 + np.abs(fft_y)**2 + np.abs(fft_z)**2)
     pos_mask = freqs >= 0
-    return freqs[pos_mask], np.abs(fft_x[pos_mask]), np.abs(fft_y[pos_mask]), np.abs(fft_z[pos_mask]), np.abs(fft_total[pos_mask])
+    return freqs[pos_mask], np.abs(fft_x[pos_mask]), np.abs(fft_y[pos_mask]), np.abs(fft_z[pos_mask]), np.abs(fft_combined[pos_mask])
 
 def compute_crest_factor(vib_data: VibrationData) -> float:
     """
