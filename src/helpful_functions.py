@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import scipy
 from vibration_data import VibrationData
 
 def compute_rms(vib_data: VibrationData) -> float:
@@ -90,3 +91,38 @@ def compute_sliding_window_rms(vib_data: VibrationData, window_size: int):
     # Compute rolling RMS: first compute rolling mean of squares, then take sqrt.
     rolling_mean = series.pow(2).rolling(window=window_size, center=True).mean()
     return np.sqrt(rolling_mean).values
+
+
+def compute_psd(vib_data: VibrationData, nperseg=256):
+    """
+    Compute the power spectral density (PSD) for each acceleration axis and the overall magnitude.
+    
+    Parameters:
+        vib_data: An instance of VibrationData with attributes:
+                  - timestamps (np.array): Time vector.
+                  - x, y, z (np.array): Acceleration data for each axis.
+                  - magnitude(): A method that returns the overall acceleration magnitude.
+        nperseg (int): Number of samples per segment for Welch's method (default is 256).
+    
+    Returns:
+        tuple: (freqs, psd_x, psd_y, psd_z, psd_magnitude)
+            - freqs: Frequency values (Hz).
+            - psd_x: PSD for the x-axis (units: (m/s²)²/Hz or g²/Hz if acceleration is in g).
+            - psd_y: PSD for the y-axis.
+            - psd_z: PSD for the z-axis.
+            - psd_magnitude: PSD for the overall acceleration magnitude.
+    """
+    # Calculate sampling frequency from the timestamps.
+    ts = vib_data.timestamps
+    fs = 1 / np.mean(np.diff(ts))
+    
+    # Compute PSD for each acceleration axis using Welch's method.
+    freqs, psd_x = scipy.signal.welch(vib_data.x, fs=fs, nperseg=nperseg)
+    _, psd_y = scipy.signal.welch(vib_data.y, fs=fs, nperseg=nperseg)
+    _, psd_z = scipy.signal.welch(vib_data.z, fs=fs, nperseg=nperseg)
+    
+    # Compute PSD for the overall magnitude.
+    magnitude = vib_data.magnitude()
+    _, psd_magnitude = scipy.signal.welch(magnitude, fs=fs, nperseg=nperseg)
+    
+    return freqs, psd_x, psd_y, psd_z, psd_magnitude

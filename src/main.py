@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from vibration_data import VibrationData
 from helpful_functions import (
+    compute_psd,
     compute_rms,
     compute_vdv,
     compute_fft,
@@ -38,7 +39,8 @@ def process_file(file_path, window_size=200, simulate_isolation=False):
         'sliding_rms': compute_sliding_window_rms(vib_data, window_size),
         'fft': compute_fft(vib_data),  # returns (freqs, fft_x, fft_y, fft_z, fft_total)
         'timestamps': vib_data.timestamps,
-        'magnitude': vib_data.magnitude()
+        'magnitude': vib_data.magnitude(),
+        'psd': compute_psd(vib_data),
     }
     return metrics
 
@@ -157,9 +159,9 @@ def main_combined():
         print(f"  In decibels (dB): {res['overall_db']:.2f} dB\n")
     
     # plot_all_in_one(results_dict)
-    plot_single_dataset(results_dict, "Foam", "sliding_rms")
-    plot_single_dataset(results_dict, "Washer", "sliding_rms")
-    plot_single_dataset(results_dict, "No Washer", "sliding_rms")
+    plot_single_dataset(results_dict, "Foam", "psd")
+    plot_single_dataset(results_dict, "Washer", "psd")
+    plot_single_dataset(results_dict, "No Washer", "psd")
     
 
 if __name__ == "__main__":
