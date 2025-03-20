@@ -8,17 +8,29 @@ from helpful_functions import (
     compute_crest_factor,
     compute_sliding_window_rms
 )
+from graphing import (
+    plot_all_in_one,
+    plot_single_dataset,
+)
+def process_file(file_path, window_size=200, simulate_isolation=False):
 
-def process_file(file_path, window_size=200):
-    """
-    Load vibration data from a CSV file, compute various metrics, 
-    and extract overall magnitude.
-    
-    Returns:
-        dict: Contains timestamps, RMS, VDV, crest factor, sliding RMS,
-              FFT components, and overall magnitude.
-    """
     vib_data = VibrationData.from_csv(file_path=file_path)
+    
+    # ------------------------------------------------
+    # (1) Call our new "simulate_amplified_isolation" 
+    #     to artificially damp seat vibrations:
+    # ------------------------------------------------
+    # You can adjust freq_center, freq_band, and attenuation_factor 
+    # to see how the seat data might look with "stronger" isolation.
+    if simulate_isolation:
+        vib_data = simulate_amplified_isolation(
+            vib_data,
+            freq_center=10.0,
+            freq_band=10.0,
+            attenuation_factor=0.5
+        )
+        pass
+
     metrics = {
         'rms': compute_rms(vib_data),
         'vdv': compute_vdv(vib_data),
@@ -46,7 +58,7 @@ def process_transmissibility(input_file, seat_file, window_size=200):
               corresponding timestamps.
     """
     input_metrics = process_file(input_file, window_size)
-    seat_metrics  = process_file(seat_file, window_size)
+    seat_metrics  = process_file(seat_file, window_size, simulate_isolation=False)
     
     overall_ratio = seat_metrics['rms'] / input_metrics['rms']
     overall_db = 20 * np.log10(overall_ratio)
@@ -62,10 +74,61 @@ def process_transmissibility(input_file, seat_file, window_size=200):
         'sliding_ratio': sliding_ratio
     }
 
+def simulate_amplified_isolation(vib_data, freq_center=10.0, freq_band=5.0, attenuation_factor=0.5):
+    """
+    Artificially reduce the seat vibration in a certain frequency band
+    to mimic "stronger damping/isolation."
+
+    :param vib_data: VibrationData object with x, y, z, timestamps, etc.
+    :param freq_center: Center frequency (Hz) around which to apply extra damping.
+    :param freq_band: +/- range around freq_center (Hz) for attenuation.
+    :param attenuation_factor: Multiplier for amplitude in that band (e.g., 0.5 => 50% of original).
+    :return: A new VibrationData object with modified x, y, z arrays.
+    """
+    import numpy as np
+    import copy
+    
+    # Make a deep copy so we don't overwrite the original data.
+    new_vib_data = copy.deepcopy(vib_data)
+
+    # Retrieve time array and original accelerations
+    t = vib_data.timestamps
+    x_orig = vib_data.x
+    y_orig = vib_data.y
+    z_orig = vib_data.z
+
+    # Estimate sampling frequency (assuming uniform spacing)
+    dt = t[1] - t[0]
+    fs = 1.0 / dt
+    n = len(t)
+
+    # Define the frequency array for the real FFT
+    freqs = np.fft.rfftfreq(n, d=dt)
+
+    def attenuate_in_band(signal):
+        # 1) FFT
+        fft_vals = np.fft.rfft(signal)
+
+        # 2) Attenuate in the chosen frequency band
+        f_low  = freq_center - freq_band
+        f_high = freq_center + freq_band
+
+        for i, f in enumerate(freqs):
+            if f_low <= f <= f_high:
+                fft_vals[i] *= attenuation_factor
+
+        # 3) Inverse FFT
+        return np.fft.irfft(fft_vals, n=n)
+
+    # Apply to each axis
+    new_vib_data.x = attenuate_in_band(x_orig)
+    new_vib_data.y = attenuate_in_band(y_orig)
+    new_vib_data.z = attenuate_in_band(z_orig)
+
+    return new_vib_data
+
+
 def main_combined():
-    # Define your datasets as dictionaries.
-    # Each dataset contains two accelerometer CSV paths:
-    # "Runners" (e.g., input/runner) and "Seat" (e.g., seat or foam).
     datasets = {
         "Foam": {
             "Runners": "data/CarOn_Washer_Foam/Runner.csv",
@@ -81,72 +144,24 @@ def main_combined():
         }
     }
     
-    # Process each dataset (i.e., each pair of CSV files) and store results.
+    window_size = 100
     results_dict = {}
-    window_size = 100  # adjust as needed based on your sampling rate
     for key, file_dict in datasets.items():
         res = process_transmissibility(file_dict["Runners"], file_dict["Seat"], window_size)
         results_dict[key] = res
+        
         print(f"{key}:")
         print(f"  Input RMS: {res['input_metrics']['rms']:.3f} m/s²")
         print(f"  Seat RMS: {res['seat_metrics']['rms']:.3f} m/s²")
         print(f"  Transmissibility Ratio: {res['overall_ratio']:.3f}")
         print(f"  In decibels (dB): {res['overall_db']:.2f} dB\n")
     
-    # Create a gridded plot.
-    # Each row corresponds to one dataset and columns represent:
-    # 0: Overall data magnitude, 1: Sliding window RMS,
-    # 2: Overall FFT (using fft_total), 3: Sliding transmissibility ratio.
-    num_rows = len(results_dict)
-    num_cols = 4
-    fig, axs = plt.subplots(num_rows, num_cols, figsize=(5*num_cols, 4*num_rows), squeeze=False)
+    # plot_all_in_one(results_dict)
+    plot_single_dataset(results_dict, "Foam", "sliding_rms")
+    plot_single_dataset(results_dict, "Washer", "sliding_rms")
+    plot_single_dataset(results_dict, "No Washer", "sliding_rms")
     
-    for i, (key, res) in enumerate(results_dict.items()):
-        in_metrics = res['input_metrics']
-        seat_metrics = res['seat_metrics']
-        # Assume timestamps are the same for both channels.
-        timestamps = in_metrics['timestamps']
-        
-        # --- Column 0: Overall Data Magnitude ---
-        ax = axs[i][0]
-        ax.plot(timestamps, in_metrics['magnitude'], label="Runners")
-        ax.plot(seat_metrics['timestamps'], seat_metrics['magnitude'], label="Seat")
-        ax.set_title(f"{key} - Magnitude")
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Magnitude")
-        ax.legend()
-        
-        # --- Column 1: Sliding Window RMS ---
-        ax = axs[i][1]
-        ax.plot(timestamps, in_metrics['sliding_rms'], label="Runners")
-        ax.plot(seat_metrics['timestamps'], seat_metrics['sliding_rms'], label="Seat")
-        ax.set_title(f"{key} - Sliding RMS")
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("RMS (m/s²)")
-        ax.legend()
-        
-        # --- Column 2: Overall FFT ---
-        # Using the overall FFT (fft_total) from each accelerometer.
-        ax = axs[i][2]
-        freqs, _, _, _, fft_total_in = in_metrics['fft']
-        _, _, _, _, fft_total_seat = seat_metrics['fft']
-        ax.plot(freqs, fft_total_in, label="Runners")
-        ax.plot(freqs, fft_total_seat, label="Seat")
-        ax.set_title(f"{key} - FFT")
-        ax.set_xlabel("Frequency (Hz)")
-        ax.set_ylabel("Magnitude")
-        ax.legend()
-        
-        # --- Column 3: Sliding Transmissibility Ratio ---
-        ax = axs[i][3]
-        ax.plot(timestamps, res['sliding_ratio'], label="Sliding Transmissibility")
-        ax.set_title(f"{key} - Sliding Transmissibility")
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Transmissibility Ratio")
-        ax.legend()
-    
-    plt.tight_layout()
-    plt.show()
 
 if __name__ == "__main__":
     main_combined()
+
